@@ -1,0 +1,73 @@
+---
+
+name: CI
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: lint
+        uses: reviewdog/action-golangci-lint@v2
+  test:
+    services:
+      mysql:
+        image: 'mysql:8.2.0'
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: tenant_default
+        ports:
+          - '3306/tcp'
+    strategy:
+      matrix:
+        go_version:
+          - 1.21.x
+          - 1.20.x
+        os:
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go_version }}
+      - name: wait DB
+        timeout-minutes: 2
+        run: |
+          while ! mysql -uroot -h 127.0.0.1 -P ${port} -e 'select 1' >/dev/null; do
+            sleep 1
+          done
+        env:
+          port: ${{ job.services.mysql.ports[3306] }}
+      - name: setup db
+        run: |
+          echo "TEST_DB_DSN=root@tcp(127.0.0.1:${port})/tenant_default" >> "$GITHUB_ENV"
+          mysql -uroot -h 127.0.0.1 -P ${port} tenant_default < ./testdata/ddl.sql
+        env:
+          port: ${{ job.services.mysql.ports[3306] }}
+      - name: test
+        run: go test -race -coverprofile=cover.out -covermode=atomic ./...
+      - uses: actions/upload-artifact@v3
+        if: strategy.job-index == 0
+        with:
+          name: coverage
+          path: ./cover.out
+          if-no-files-found: error
+  report-coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    needs:
+      - test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v3
+        with:
+          name: coverage
+      - uses: k1LoW/octocov-action@v0

@@ -1,0 +1,16 @@
+---
+
+version: '3'
+services:
+  mysql:
+    image: 'mysql:8.2.0'
+    ports:
+      - '3306:3306'
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'true'
+      MYSQL_DATABASE: tenant_default
+      MYSQL_INITDB_SKIP_TZINFO: 'true'
+      TZ: 'Asia/Tokyo'
+    volumes:
+      - './testdata/ddl.sql:/docker-entrypoint-initdb.d/00_ddl.sql'
+      - './tmp/db:/var/lib/mysql'
