@@ -14,6 +14,10 @@ jobs:
       - name: lint
         uses: reviewdog/action-golangci-lint@v2
   test:
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
     services:
       mysql:
         image: 'mysql:8.2.0'
@@ -51,23 +55,5 @@ jobs:
           port: ${{ job.services.mysql.ports[3306] }}
       - name: test
         run: go test -race -coverprofile=cover.out -covermode=atomic ./...
-      - uses: actions/upload-artifact@v3
-        if: strategy.job-index == 0
-        with:
-          name: coverage
-          path: ./cover.out
-          if-no-files-found: error
-  report-coverage:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: write
-    needs:
-      - test
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v3
-        with:
-          name: coverage
-      - uses: k1LoW/octocov-action@v0
+      - uses: k1LoW/octocov-action@v1
+        if: ${{ matrix.go_version == 'stable' }}
