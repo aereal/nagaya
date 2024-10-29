@@ -48,12 +48,12 @@ func TestMiddleware(t *testing.T) {
 		type user struct{ UserID uint64 }
 		var result struct{ Users []user }
 		for rows.Next() {
-			var user user
-			if err := rows.Scan(&user.UserID); err != nil {
+			var u user
+			if err := rows.Scan(&u.UserID); err != nil {
 				http.Error(w, fmt.Sprintf("failed to scan result: %s", err), http.StatusInternalServerError)
 				return
 			}
-			result.Users = append(result.Users, user)
+			result.Users = append(result.Users, u)
 		}
 		_ = json.NewEncoder(w).Encode(result) //nolint:errcheck,errchkjson
 	})
