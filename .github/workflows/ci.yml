@@ -13,6 +13,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: lint
         uses: reviewdog/action-golangci-lint@v2
+        with:
+          golangci_lint_flags: '--config=.golangci.yml ./...'
+          reporter: github-pr-review
+          filter_mode: nofilter
+          fail_on_error: true
   test:
     permissions:
       actions: read
