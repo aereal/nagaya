@@ -1,4 +1,9 @@
 ---
+issues:
+  exclude-rules:
+    - linters:
+        - govet
+      text: "shadow: declaration of \"err\"" # err shadowing may be common and almost no harms
 linters:
   disable-all: true
   enable:
