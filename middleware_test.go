@@ -59,10 +59,10 @@ func TestMiddleware(t *testing.T) {
 
 	testCases := []struct {
 		name             string
-		options          []nagaya.MiddlewareOption
-		wantStatus       int
 		wantErrorMessage string
 		tenantIDHeader   string
+		options          []nagaya.MiddlewareOption
+		wantStatus       int
 	}{
 		{
 			name:           "ok",
