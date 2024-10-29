@@ -16,6 +16,7 @@ import (
 )
 
 func TestMiddleware(t *testing.T) {
+	t.Parallel()
 	dsn := os.Getenv("TEST_DB_DSN")
 	if dsn == "" {
 		t.Fatal("TEST_DB_DSN is required")
