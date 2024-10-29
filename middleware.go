@@ -9,72 +9,10 @@ import (
 	"time"
 
 	"github.com/rs/xid"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var defaultChangeTenantTimeout = time.Second * 5
-
-type middlewareConfig struct {
-	reqIDGen                     RequestIDGenerator
-	getTenant                    func(r *http.Request) (Tenant, bool)
-	handleNoTenantBoundError     ErrorHandler
-	handleObtainConnectionError  ErrorHandler
-	handleChangeTenantError      ErrorHandler
-	handleGenerateRequestIDError ErrorHandler
-	changeTenantTimeout          time.Duration
-}
-
-// MiddlewareOption applies a configuration option value to a middleware.
-type MiddlewareOption func(cfg *middlewareConfig)
-
-// WithTimeout configures the time a middleware waits the change of tenant.
-func WithTimeout(dur time.Duration) MiddlewareOption {
-	return func(cfg *middlewareConfig) { cfg.changeTenantTimeout = dur }
-}
-
-func GetTenantFromHeader(headerName string) MiddlewareOption {
-	return func(cfg *middlewareConfig) {
-		cfg.getTenant = func(r *http.Request) (Tenant, bool) {
-			v := r.Header.Get(headerName)
-			if v == "" {
-				return Tenant(""), false
-			}
-			return Tenant(v), true
-		}
-	}
-}
-
-func WithGetTenantFn(fn func(r *http.Request) (Tenant, bool)) MiddlewareOption {
-	return func(cfg *middlewareConfig) { cfg.getTenant = fn }
-}
-
-func WithRequestIDGenerator(gen RequestIDGenerator) MiddlewareOption {
-	return func(cfg *middlewareConfig) { cfg.reqIDGen = gen }
-}
-
-func WithErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return func(cfg *middlewareConfig) {
-		cfg.handleChangeTenantError = handler
-		cfg.handleGenerateRequestIDError = handler
-		cfg.handleNoTenantBoundError = handler
-		cfg.handleObtainConnectionError = handler
-	}
-}
-
-func WithChangeTenantErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return func(cfg *middlewareConfig) { cfg.handleChangeTenantError = handler }
-}
-
-func WithGenerateRequestIDErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return func(cfg *middlewareConfig) { cfg.handleGenerateRequestIDError = handler }
-}
-
-func WithNoTenantBoundErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return func(cfg *middlewareConfig) { cfg.handleNoTenantBoundError = handler }
-}
-
-func WithObtainConnectionErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return func(cfg *middlewareConfig) { cfg.handleObtainConnectionError = handler }
-}
 
 func failsToDetermineTenant(_ *http.Request) (_ Tenant, _ bool) { return }
 
@@ -84,7 +22,7 @@ func failsToDetermineTenant(_ *http.Request) (_ Tenant, _ bool) { return }
 func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareOption) func(http.Handler) http.Handler {
 	cfg := new(middlewareConfig)
 	for _, o := range opts {
-		o(cfg)
+		o.applyMiddlewareOption(cfg)
 	}
 	if cfg.changeTenantTimeout == 0 {
 		cfg.changeTenantTimeout = defaultChangeTenantTimeout
@@ -107,17 +45,23 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 	if cfg.handleGenerateRequestIDError == nil {
 		cfg.handleGenerateRequestIDError = jsonErrorHandler
 	}
+	tracer := getTracer(cfg.tp)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, span := tracer.Start(r.Context(), "Nagaya.Middleware", trace.WithSpanKind(trace.SpanKindServer))
 			tenant, ok := cfg.getTenant(r)
 			if !ok {
 				cfg.handleNoTenantBoundError(w, r, ErrNoTenantBound)
+				finishSpan(span, ErrNoTenantBound)
 				return
 			}
-			ctx := WithTenant(r.Context(), tenant)
+			span.SetAttributes(KeyTenant.String(string(tenant)))
+			ctx = WithTenant(ctx, tenant)
 			conn, err := n.getConn(ctx, n.db)
 			if err != nil {
-				cfg.handleObtainConnectionError(w, r, &ObtainConnectionError{err: err})
+				obtainErr := &ObtainConnectionError{err: err}
+				cfg.handleObtainConnectionError(w, r, obtainErr)
+				finishSpan(span, obtainErr)
 				return
 			}
 			defer func() {
@@ -126,14 +70,19 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 			exCtx, cancel := context.WithTimeout(ctx, cfg.changeTenantTimeout)
 			defer cancel()
 			if _, err := conn.ExecContext(exCtx, fmt.Sprintf("use %s", tenant)); err != nil {
-				cfg.handleChangeTenantError(w, r, &ChangeTenantError{err: err, tenant: tenant})
+				changeErr := &ChangeTenantError{err: err, tenant: tenant}
+				cfg.handleChangeTenantError(w, r, changeErr)
+				finishSpan(span, changeErr)
 				return
 			}
 			reqID, err := cfg.reqIDGen.GenerateID(ctx, r)
 			if err != nil {
-				cfg.handleGenerateRequestIDError(w, r, &GenerateRequestIDError{err: err})
+				genErr := &GenerateRequestIDError{err: err}
+				cfg.handleGenerateRequestIDError(w, r, genErr)
+				finishSpan(span, genErr)
 				return
 			}
+			span.SetAttributes(KeyRequestID.String(reqID))
 			n.mux.Lock()
 			n.conns[reqID] = conn
 			n.mux.Unlock()
@@ -142,6 +91,7 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 				defer n.mux.Unlock()
 				delete(n.conns, reqID)
 			}()
+			finishSpan(span, nil)
 			next.ServeHTTP(w, r.WithContext(contextWithReqID(ctx, reqID)))
 		})
 	}

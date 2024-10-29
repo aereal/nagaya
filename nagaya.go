@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"sync"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Tenant is an identifier of resource subset stored in the shared database.
@@ -27,13 +29,19 @@ func TenantFromContext(ctx context.Context) (Tenant, bool) {
 // GetConnFn is a function type returns new database connection from the DB.
 type GetConnFn[DB DBish, Conn Connish] func(ctx context.Context, db DB) (Conn, error)
 
-func New[DB DBish, Conn Connish](db DB, getConn GetConnFn[DB, Conn]) *Nagaya[DB, Conn] {
-	n := &Nagaya[DB, Conn]{db: db, conns: make(map[string]Conn), getConn: getConn}
+func New[DB DBish, Conn Connish](db DB, getConn GetConnFn[DB, Conn], opts ...NewOption) *Nagaya[DB, Conn] {
+	cfg := new(newConfig)
+	for _, o := range opts {
+		o.applyNewOption(cfg)
+	}
+	tracer := getTracer(cfg.tp)
+
+	n := &Nagaya[DB, Conn]{db: db, conns: make(map[string]Conn), getConn: getConn, tracer: tracer}
 	return n
 }
 
-func NewStd(db *sql.DB) *Nagaya[*sql.DB, *sql.Conn] {
-	return New[*sql.DB, *sql.Conn](db, getConnStd)
+func NewStd(db *sql.DB, opts ...NewOption) *Nagaya[*sql.DB, *sql.Conn] {
+	return New[*sql.DB, *sql.Conn](db, getConnStd, opts...)
 }
 
 func getConnStd(ctx context.Context, db *sql.DB) (*sql.Conn, error) {
@@ -41,6 +49,7 @@ func getConnStd(ctx context.Context, db *sql.DB) (*sql.Conn, error) {
 }
 
 type Nagaya[DB DBish, Conn Connish] struct {
+	tracer  trace.Tracer
 	db      DB
 	conns   map[string]Conn
 	getConn GetConnFn[DB, Conn]
@@ -49,6 +58,9 @@ type Nagaya[DB DBish, Conn Connish] struct {
 
 // ObtainConnection returns a database connection connected to the current tenant.
 func (n *Nagaya[DB, Conn]) ObtainConnection(ctx context.Context) (conn Conn, err error) {
+	ctx, span := n.tracer.Start(ctx, "Nagaya.ObtainConnection")
+	defer finishSpan(span, err)
+
 	reqID, ok := reqIDFromContext(ctx)
 	if !ok {
 		err = ErrNoConnectionBound
