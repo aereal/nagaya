@@ -41,10 +41,10 @@ func getConnStd(ctx context.Context, db *sql.DB) (*sql.Conn, error) {
 }
 
 type Nagaya[DB DBish, Conn Connish] struct {
-	mux     sync.RWMutex
 	db      DB
 	conns   map[string]Conn
 	getConn GetConnFn[DB, Conn]
+	mux     sync.RWMutex
 }
 
 // ObtainConnection returns a database connection connected to the current tenant.

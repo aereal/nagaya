@@ -16,6 +16,7 @@ import (
 )
 
 func TestMiddleware(t *testing.T) {
+	t.Parallel()
 	dsn := os.Getenv("TEST_DB_DSN")
 	if dsn == "" {
 		t.Fatal("TEST_DB_DSN is required")
@@ -47,22 +48,22 @@ func TestMiddleware(t *testing.T) {
 		type user struct{ UserID uint64 }
 		var result struct{ Users []user }
 		for rows.Next() {
-			var user user
-			if err := rows.Scan(&user.UserID); err != nil {
+			var u user
+			if err := rows.Scan(&u.UserID); err != nil {
 				http.Error(w, fmt.Sprintf("failed to scan result: %s", err), http.StatusInternalServerError)
 				return
 			}
-			result.Users = append(result.Users, user)
+			result.Users = append(result.Users, u)
 		}
-		_ = json.NewEncoder(w).Encode(result)
+		_ = json.NewEncoder(w).Encode(result) //nolint:errcheck,errchkjson
 	})
 
 	testCases := []struct {
 		name             string
-		options          []nagaya.MiddlewareOption
-		wantStatus       int
 		wantErrorMessage string
 		tenantIDHeader   string
+		options          []nagaya.MiddlewareOption
+		wantStatus       int
 	}{
 		{
 			name:           "ok",
@@ -115,7 +116,7 @@ func TestMiddleware(t *testing.T) {
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != tc.wantStatus {
-				body, _ := io.ReadAll(resp.Body)
+				body, _ := io.ReadAll(resp.Body) //nolint:errcheck
 				t.Errorf("failed to request: status=%d body=%s", resp.StatusCode, string(body))
 			}
 			var body struct {

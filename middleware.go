@@ -14,13 +14,13 @@ import (
 var defaultChangeTenantTimeout = time.Second * 5
 
 type middlewareConfig struct {
-	getTenant                    func(r *http.Request) (Tenant, bool)
-	changeTenantTimeout          time.Duration
 	reqIDGen                     RequestIDGenerator
+	getTenant                    func(r *http.Request) (Tenant, bool)
 	handleNoTenantBoundError     ErrorHandler
 	handleObtainConnectionError  ErrorHandler
 	handleChangeTenantError      ErrorHandler
 	handleGenerateRequestIDError ErrorHandler
+	changeTenantTimeout          time.Duration
 }
 
 // MiddlewareOption applies a configuration option value to a middleware.
@@ -182,5 +182,5 @@ func jsonErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusBadRequest
 	}
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}) //nolint:errcheck,errchkjson
 }
