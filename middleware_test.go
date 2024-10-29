@@ -54,7 +54,7 @@ func TestMiddleware(t *testing.T) {
 			}
 			result.Users = append(result.Users, user)
 		}
-		_ = json.NewEncoder(w).Encode(result)
+		_ = json.NewEncoder(w).Encode(result) //nolint:errcheck,errchkjson
 	})
 
 	testCases := []struct {
@@ -115,7 +115,7 @@ func TestMiddleware(t *testing.T) {
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != tc.wantStatus {
-				body, _ := io.ReadAll(resp.Body)
+				body, _ := io.ReadAll(resp.Body) //nolint:errcheck
 				t.Errorf("failed to request: status=%d body=%s", resp.StatusCode, string(body))
 			}
 			var body struct {
