@@ -44,6 +44,14 @@ func _() {
 }
 ```
 
+## Developemnt and testing
+
+```sh
+docker compose up -d
+port="$(docker compose ps --format json | jq '[(.Publishers[] | select(.TargetPort == 3306))][0].PublishedPort')"
+export TEST_DB_DSN="root@tcp(127.0.0.1:${port})/tenant_default"
+```
+
 ## License
 
 See LICENSE file.
