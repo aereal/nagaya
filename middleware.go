@@ -21,7 +21,7 @@ func failsToDetermineTenant(_ *http.Request) (_ Tenant, _ bool) { return }
 func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareOption) func(http.Handler) http.Handler {
 	cfg := new(middlewareConfig)
 	for _, o := range opts {
-		o(cfg)
+		o.applyMiddlewareOption(cfg)
 	}
 	if cfg.changeTenantTimeout == 0 {
 		cfg.changeTenantTimeout = defaultChangeTenantTimeout
