@@ -131,3 +131,45 @@ func TestMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestMiddleware_not_configured(t *testing.T) {
+	dsn := os.Getenv("TEST_DB_DSN")
+	if dsn == "" {
+		t.Fatal("TEST_DB_DSN is required")
+	}
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open: %s", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ngy := nagaya.NewStd(db)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		_, err := ngy.ObtainConnection(ctx)
+		if err == nil {
+			t.Errorf("expected no connection returned but expectedly got")
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	srv := httptest.NewServer(handler)
+	t.Cleanup(func() { srv.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	if deadline, ok := t.Deadline(); ok {
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+	}
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("http.NewRequestWithContext: %s", err)
+	}
+	req.Header.Set("tenant-id", "tenant_1")
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("http.Client.Do: %s", err)
+	}
+	defer resp.Body.Close()
+}
