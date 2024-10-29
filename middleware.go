@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rs/xid"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var defaultChangeTenantTimeout = time.Second * 5
@@ -44,17 +45,23 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 	if cfg.handleGenerateRequestIDError == nil {
 		cfg.handleGenerateRequestIDError = jsonErrorHandler
 	}
+	tracer := getTracer(cfg.tp)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, span := tracer.Start(r.Context(), "Nagaya.Middleware", trace.WithSpanKind(trace.SpanKindServer))
 			tenant, ok := cfg.getTenant(r)
 			if !ok {
 				cfg.handleNoTenantBoundError(w, r, ErrNoTenantBound)
+				finishSpan(span, ErrNoTenantBound)
 				return
 			}
-			ctx := WithTenant(r.Context(), tenant)
+			span.SetAttributes(KeyTenant.String(string(tenant)))
+			ctx = WithTenant(ctx, tenant)
 			conn, err := n.getConn(ctx, n.db)
 			if err != nil {
-				cfg.handleObtainConnectionError(w, r, &ObtainConnectionError{err: err})
+				obtainErr := &ObtainConnectionError{err: err}
+				cfg.handleObtainConnectionError(w, r, obtainErr)
+				finishSpan(span, obtainErr)
 				return
 			}
 			defer func() {
@@ -63,14 +70,19 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 			exCtx, cancel := context.WithTimeout(ctx, cfg.changeTenantTimeout)
 			defer cancel()
 			if _, err := conn.ExecContext(exCtx, fmt.Sprintf("use %s", tenant)); err != nil {
-				cfg.handleChangeTenantError(w, r, &ChangeTenantError{err: err, tenant: tenant})
+				changeErr := &ChangeTenantError{err: err, tenant: tenant}
+				cfg.handleChangeTenantError(w, r, changeErr)
+				finishSpan(span, changeErr)
 				return
 			}
 			reqID, err := cfg.reqIDGen.GenerateID(ctx, r)
 			if err != nil {
-				cfg.handleGenerateRequestIDError(w, r, &GenerateRequestIDError{err: err})
+				genErr := &GenerateRequestIDError{err: err}
+				cfg.handleGenerateRequestIDError(w, r, genErr)
+				finishSpan(span, genErr)
 				return
 			}
+			span.SetAttributes(KeyRequestID.String(reqID))
 			n.mux.Lock()
 			n.conns[reqID] = conn
 			n.mux.Unlock()
@@ -79,6 +91,7 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 				defer n.mux.Unlock()
 				delete(n.conns, reqID)
 			}()
+			finishSpan(span, nil)
 			next.ServeHTTP(w, r.WithContext(contextWithReqID(ctx, reqID)))
 		})
 	}

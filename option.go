@@ -3,9 +3,35 @@ package nagaya
 import (
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
+type newConfig struct {
+	tp trace.TracerProvider
+}
+
+type NewOption interface {
+	applyNewOption(cfg *newConfig)
+}
+
+type optTracerProvider struct{ tp trace.TracerProvider }
+
+func (o *optTracerProvider) applyNewOption(cfg *newConfig) {
+	cfg.tp = o.tp
+}
+
+func (o *optTracerProvider) applyMiddlewareOption(cfg *middlewareConfig) { cfg.tp = o.tp }
+
+func WithTracerProvider(tp trace.TracerProvider) interface {
+	NewOption
+	MiddlewareOption
+} {
+	return &optTracerProvider{tp: tp}
+}
+
 type middlewareConfig struct {
+	tp                           trace.TracerProvider
 	reqIDGen                     RequestIDGenerator
 	getTenant                    func(r *http.Request) (Tenant, bool)
 	handleNoTenantBoundError     ErrorHandler
