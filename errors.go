@@ -10,6 +10,8 @@ var (
 	ErrNoTenantBound = errors.New("no tenant bound for the context")
 	// ErrNoConnectionBound is an error represents no DB connection obtained for the context.
 	ErrNoConnectionBound = errors.New("no DB connection bound for the context")
+	// ErrNoTenantChange indicates the nagaya no need to change tenant.
+	ErrNoTenantChange = errors.New("no tenant change")
 )
 
 // ObtainConnectionError is an error type represents the failure of obtaining DB connection.
