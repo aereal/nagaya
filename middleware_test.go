@@ -15,6 +15,22 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+const tenantHeaderDefault = "default"
+
+func obo(headerName string) nagaya.DecideTenantFn {
+	return func(r *http.Request) nagaya.TenantDecisionResult {
+		tenant := r.Header.Get(headerName)
+		switch tenant {
+		case tenantHeaderDefault:
+			return nagaya.TenantDecisionResultNoChange{}
+		case "":
+			return &nagaya.TenantDecisionResultError{Err: nagaya.ErrNoTenantBound}
+		default:
+			return &nagaya.TenantDecisionResultChangeTenant{Tenant: nagaya.Tenant(tenant)}
+		}
+	}
+}
+
 func TestMiddleware(t *testing.T) {
 	t.Parallel()
 	dsn := os.Getenv("TEST_DB_DSN")
@@ -41,16 +57,25 @@ func TestMiddleware(t *testing.T) {
 		{
 			name:                    "ok",
 			wantStatus:              http.StatusOK,
-			options:                 []nagaya.MiddlewareOption{nagaya.GetTenantFromHeader("tenant-id")},
+			options:                 []nagaya.MiddlewareOption{nagaya.DecideTenantFromHeader("tenant-id")},
 			tenantIDHeader:          "tenant_1",
 			wantTenantFromContext:   "tenant_1",
 			wantTenantOKFromContext: true,
 		},
 		{
+			name:                    "ok/no tenant change",
+			wantStatus:              http.StatusOK,
+			options:                 []nagaya.MiddlewareOption{nagaya.WithDecideTenantFn(obo("tenant-id"))},
+			tenantIDHeader:          tenantHeaderDefault,
+			wantErrorMessage:        "no tenant change",
+			wantTenantFromContext:   "",
+			wantTenantOKFromContext: false,
+		},
+		{
 			name:             "ng/no tenant id header",
 			wantStatus:       http.StatusInternalServerError,
 			wantErrorMessage: "no tenant bound for the context",
-			options:          []nagaya.MiddlewareOption{nagaya.GetTenantFromHeader("tenant-id")},
+			options:          []nagaya.MiddlewareOption{nagaya.DecideTenantFromHeader("tenant-id")},
 		},
 		{
 			name:             "ng/not configured how to get tenant",
@@ -61,7 +86,7 @@ func TestMiddleware(t *testing.T) {
 			name:             "ng/unknown tenant",
 			wantStatus:       http.StatusInternalServerError,
 			wantErrorMessage: "failed to change tenant to tenant_non_existent: Error 1049 (42000): Unknown database 'tenant_non_existent'",
-			options:          []nagaya.MiddlewareOption{nagaya.GetTenantFromHeader("tenant-id")},
+			options:          []nagaya.MiddlewareOption{nagaya.DecideTenantFromHeader("tenant-id")},
 			tenantIDHeader:   "tenant_non_existent",
 		},
 	}
@@ -77,6 +102,12 @@ func TestMiddleware(t *testing.T) {
 				}
 				if tc.wantTenantOKFromContext != gotFoundTenant {
 					t.Errorf("TenantFromContext.ok:\n\twant: %v\n\t got: %v", tc.wantTenantOKFromContext, gotFoundTenant)
+				}
+				if !gotFoundTenant {
+					w.Header().Set("content-type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					fmt.Fprint(w, `{"error":"no tenant change"}`)
+					return
 				}
 				conn, err := ngy.ObtainConnection(ctx)
 				if err != nil {

@@ -33,7 +33,7 @@ func WithTracerProvider(tp trace.TracerProvider) interface {
 type middlewareConfig struct {
 	tp                           trace.TracerProvider
 	reqIDGen                     RequestIDGenerator
-	getTenant                    func(r *http.Request) (Tenant, bool)
+	decideTenant                 DecideTenantFn
 	handleNoTenantBoundError     ErrorHandler
 	handleObtainConnectionError  ErrorHandler
 	handleChangeTenantError      ErrorHandler
@@ -55,32 +55,48 @@ func WithTimeout(dur time.Duration) MiddlewareOption {
 	return &optTimeout{dur: dur}
 }
 
-type optGetTenantFromHeader struct{ headerName string }
-
-func (o *optGetTenantFromHeader) applyMiddlewareOption(cfg *middlewareConfig) {
-	cfg.getTenant = func(r *http.Request) (Tenant, bool) {
-		v := r.Header.Get(o.headerName)
-		if v == "" {
-			return Tenant(""), false
-		}
-		return Tenant(v), true
-	}
-}
-
+// GetTenantFromHeader tells the middleware get the tenant from the request header.
+//
+// Deprecated: use DecideTenantFromHeader
 func GetTenantFromHeader(headerName string) MiddlewareOption {
-	return &optGetTenantFromHeader{headerName: headerName}
+	return DecideTenantFromHeader(headerName)
 }
 
-type optGetTenantFn struct {
-	fn func(*http.Request) (Tenant, bool)
-}
-
-func (o *optGetTenantFn) applyMiddlewareOption(cfg *middlewareConfig) {
-	cfg.getTenant = o.fn
-}
-
+// WithGetTenantFn tells the middleware get the tenant using given function.
+//
+// Deprecated: use WithDecideTenantFn
 func WithGetTenantFn(fn func(r *http.Request) (Tenant, bool)) MiddlewareOption {
-	return &optGetTenantFn{fn: fn}
+	return WithDecideTenantFn(func(r *http.Request) TenantDecisionResult {
+		tenant, ok := fn(r)
+		if !ok {
+			return &TenantDecisionResultError{Err: ErrNoTenantBound}
+		}
+		return &TenantDecisionResultChangeTenant{Tenant: tenant}
+	})
+}
+
+type optDecideTenantFn struct {
+	fn DecideTenantFn
+}
+
+func (o *optDecideTenantFn) applyMiddlewareOption(cfg *middlewareConfig) {
+	cfg.decideTenant = o.fn
+}
+
+// WithDecideTenantFn tells the middleware to use given function to decide the tenant.
+func WithDecideTenantFn(fn DecideTenantFn) MiddlewareOption { return &optDecideTenantFn{fn: fn} }
+
+// DecideTenantFromHeader tells the middleware to use given header value to decide the tenant.
+func DecideTenantFromHeader(headerName string) MiddlewareOption {
+	return &optDecideTenantFn{
+		fn: func(r *http.Request) TenantDecisionResult {
+			tenant := r.Header.Get(headerName)
+			if tenant == "" {
+				return &TenantDecisionResultError{Err: ErrNoTenantBound}
+			}
+			return &TenantDecisionResultChangeTenant{Tenant: Tenant(tenant)}
+		},
+	}
 }
 
 type optRequestIDGenerator struct{ gen RequestIDGenerator }

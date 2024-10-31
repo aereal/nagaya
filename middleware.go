@@ -14,7 +14,9 @@ import (
 
 var defaultChangeTenantTimeout = time.Second * 5
 
-func failsToDetermineTenant(_ *http.Request) (_ Tenant, _ bool) { return }
+func failsToDetermineTenant(_ *http.Request) TenantDecisionResult {
+	return &TenantDecisionResultError{Err: ErrNoTenantBound}
+}
 
 // Middleware returns a middleware function that determines target tenant and obtain the database connection against the tenant.
 //
@@ -27,8 +29,8 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 	if cfg.changeTenantTimeout == 0 {
 		cfg.changeTenantTimeout = defaultChangeTenantTimeout
 	}
-	if cfg.getTenant == nil {
-		cfg.getTenant = failsToDetermineTenant
+	if cfg.decideTenant == nil {
+		cfg.decideTenant = failsToDetermineTenant
 	}
 	if cfg.reqIDGen == nil {
 		cfg.reqIDGen = defaultIDGenerator
@@ -49,10 +51,16 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, span := tracer.Start(r.Context(), "Nagaya.Middleware", trace.WithSpanKind(trace.SpanKindServer))
-			tenant, ok := cfg.getTenant(r)
-			if !ok {
-				cfg.handleNoTenantBoundError(w, r, ErrNoTenantBound)
-				finishSpan(span, ErrNoTenantBound)
+			decisionResult := cfg.decideTenant(r)
+			tenant, err := decisionResult.DecideTenant()
+			if errors.Is(err, ErrNoTenantChange) {
+				finishSpan(span, nil)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			if err != nil {
+				cfg.handleNoTenantBoundError(w, r, err)
+				finishSpan(span, err)
 				return
 			}
 			span.SetAttributes(KeyTenant.String(string(tenant)))
@@ -108,6 +116,57 @@ func (f RequestIDGeneratorFunc) GenerateID(ctx context.Context, r *http.Request)
 }
 
 var defaultIDGenerator = RequestIDGeneratorFunc(func(_ context.Context, _ *http.Request) (string, error) { return xid.New().String(), nil })
+
+// TenantDecision indicates whether a tenant is changed, cannot be changed due to some error, or unchanged.
+type TenantDecision int
+
+const (
+	// TenantDecisionNoChange will use default tenant.
+	TenantDecisionNoChange TenantDecision = iota
+	// TenantDecisionError has an intention to change the tenant but failed to determine it.
+	TenantDecisionError
+	// TenantDecisionChangeTenant will change a tenant.
+	TenantDecisionChangeTenant
+)
+
+// TenantDecisionResult conveys a TenantDecision and a tenant.
+type TenantDecisionResult interface {
+	isTenantDecisionResult()
+	Decision() TenantDecision
+	DecideTenant() (Tenant, error)
+}
+
+type TenantDecisionResultNoChange struct{}
+
+var _ TenantDecisionResult = (*TenantDecisionResultNoChange)(nil)
+
+func (TenantDecisionResultNoChange) isTenantDecisionResult() {}
+
+func (TenantDecisionResultNoChange) Decision() TenantDecision { return TenantDecisionNoChange }
+
+func (TenantDecisionResultNoChange) DecideTenant() (Tenant, error) { return "", ErrNoTenantChange }
+
+type TenantDecisionResultError struct{ Err error }
+
+var _ TenantDecisionResult = (*TenantDecisionResultError)(nil)
+
+func (TenantDecisionResultError) isTenantDecisionResult() {}
+
+func (TenantDecisionResultError) Decision() TenantDecision { return TenantDecisionError }
+
+func (r *TenantDecisionResultError) DecideTenant() (Tenant, error) { return "", r.Err }
+
+type TenantDecisionResultChangeTenant struct{ Tenant Tenant }
+
+var _ TenantDecisionResult = (*TenantDecisionResultChangeTenant)(nil)
+
+func (TenantDecisionResultChangeTenant) isTenantDecisionResult() {}
+
+func (TenantDecisionResultChangeTenant) Decision() TenantDecision { return TenantDecisionChangeTenant }
+
+func (r *TenantDecisionResultChangeTenant) DecideTenant() (Tenant, error) { return r.Tenant, nil }
+
+type DecideTenantFn func(*http.Request) TenantDecisionResult
 
 type reqIDCtxKey struct{}
 
