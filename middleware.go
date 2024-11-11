@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -22,12 +21,9 @@ func failsToDetermineTenant(_ *http.Request) TenantDecisionResult {
 //
 // The consumer must get the obtained connection via Nagaya.ObtainConnection method and use it to access the database.
 func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareOption) func(http.Handler) http.Handler {
-	cfg := new(middlewareConfig)
+	cfg := &middlewareConfig{bindConnectionCfg: new(bindConnectionConfig)}
 	for _, o := range opts {
 		o.applyMiddlewareOption(cfg)
-	}
-	if cfg.changeTenantTimeout == 0 {
-		cfg.changeTenantTimeout = defaultChangeTenantTimeout
 	}
 	if cfg.decideTenant == nil {
 		cfg.decideTenant = failsToDetermineTenant
@@ -63,26 +59,6 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 				finishSpan(span, err)
 				return
 			}
-			span.SetAttributes(KeyTenant.String(string(tenant)))
-			ctx = WithTenant(ctx, tenant)
-			conn, err := n.getConn(ctx, n.db)
-			if err != nil {
-				obtainErr := &ObtainConnectionError{err: err}
-				cfg.handleObtainConnectionError(w, r, obtainErr)
-				finishSpan(span, obtainErr)
-				return
-			}
-			defer func() {
-				_ = conn.Close()
-			}()
-			exCtx, cancel := context.WithTimeout(ctx, cfg.changeTenantTimeout)
-			defer cancel()
-			if _, err := conn.ExecContext(exCtx, fmt.Sprintf("use %s", tenant)); err != nil {
-				changeErr := &ChangeTenantError{err: err, tenant: tenant}
-				cfg.handleChangeTenantError(w, r, changeErr)
-				finishSpan(span, changeErr)
-				return
-			}
 			reqID, err := cfg.reqIDGen.GenerateID(ctx, r)
 			if err != nil {
 				genErr := &GenerateRequestIDError{err: err}
@@ -90,17 +66,20 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 				finishSpan(span, genErr)
 				return
 			}
-			span.SetAttributes(KeyRequestID.String(reqID))
-			n.mux.Lock()
-			n.conns[reqID] = conn
-			n.mux.Unlock()
+			span.SetAttributes(KeyRequestID.String(reqID), KeyTenant.String(string(tenant)))
+			ctx = ContextWithRequestID(WithTenant(ctx, tenant), reqID)
+			conn, err := n.BindConnection(ctx, tenant, WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout))
+			if err != nil {
+				cfg.handleObtainConnectionError(w, r, err)
+				finishSpan(span, err)
+				return
+			}
 			defer func() {
-				n.mux.Lock()
-				defer n.mux.Unlock()
-				delete(n.conns, reqID)
+				_ = conn.Close()
 			}()
+			defer n.ReleaseConnection(reqID)
 			finishSpan(span, nil)
-			next.ServeHTTP(w, r.WithContext(ContextWithRequestID(ctx, reqID)))
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

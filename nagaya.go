@@ -3,6 +3,7 @@ package nagaya
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sync"
 
 	"go.opentelemetry.io/otel/trace"
@@ -56,7 +57,10 @@ type Nagaya[DB DBish, Conn Connish] struct {
 	mux     sync.RWMutex
 }
 
-// ObtainConnection returns a database connection connected to the current tenant.
+// ObtainConnection returns a database connection bound to the current tenant.
+//
+// [BindConnection] must be called before this method called.
+// Almost users just use [Middleware] that calls [BindConnection].
 func (n *Nagaya[DB, Conn]) ObtainConnection(ctx context.Context) (conn Conn, err error) {
 	ctx, span := n.tracer.Start(ctx, "Nagaya.ObtainConnection")
 	defer finishSpan(span, err)
@@ -74,4 +78,47 @@ func (n *Nagaya[DB, Conn]) ObtainConnection(ctx context.Context) (conn Conn, err
 		return
 	}
 	return
+}
+
+// BindConnection returns a new connection from the DB that bound for given tenant.
+//
+// Usually the users should use [Middleware].
+func (n *Nagaya[DB, Conn]) BindConnection(ctx context.Context, tenant Tenant, opts ...BindConnectionOption) (c Conn, err error) {
+	ctx, span := n.tracer.Start(ctx, "Nagaya.BindConnection", trace.WithAttributes(KeyTenant.String(string(tenant))))
+	defer finishSpan(span, err)
+
+	var cfg bindConnectionConfig
+	for _, o := range opts {
+		o.applyBindConnectionOption(&cfg)
+	}
+	if cfg.changeTenantTimeout == 0 {
+		cfg.changeTenantTimeout = defaultChangeTenantTimeout
+	}
+
+	requestID, ok := reqIDFromContext(ctx)
+	if !ok {
+		return c, ErrNoConnectionBound
+	}
+	conn, err := n.getConn(ctx, n.db)
+	if err != nil {
+		return c, &ObtainConnectionError{err: err}
+	}
+	exCtx, cancel := context.WithTimeout(ctx, cfg.changeTenantTimeout)
+	defer cancel()
+	if _, err := conn.ExecContext(exCtx, fmt.Sprintf("use %s", tenant)); err != nil {
+		return c, &ChangeTenantError{err: err, tenant: tenant}
+	}
+	n.mux.Lock()
+	n.conns[requestID] = conn
+	n.mux.Unlock()
+	return conn, nil
+}
+
+// ReleaseConnection marks the current request's connection is ready to discard.
+//
+// This method does not call [sql.Conn.Close], it is caller's responsibility.
+func (n *Nagaya[DB, Conn]) ReleaseConnection(requestID string) {
+	n.mux.Lock()
+	defer n.mux.Unlock()
+	delete(n.conns, requestID)
 }

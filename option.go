@@ -15,6 +15,30 @@ type NewOption interface {
 	applyNewOption(cfg *newConfig)
 }
 
+type middlewareConfig struct {
+	tp                           trace.TracerProvider
+	reqIDGen                     RequestIDGenerator
+	decideTenant                 DecideTenantFn
+	handleNoTenantBoundError     ErrorHandler
+	handleObtainConnectionError  ErrorHandler
+	handleChangeTenantError      ErrorHandler
+	handleGenerateRequestIDError ErrorHandler
+	bindConnectionCfg            *bindConnectionConfig
+}
+
+// MiddlewareOption applies a configuration option value to a middleware.
+type MiddlewareOption interface {
+	applyMiddlewareOption(cfg *middlewareConfig)
+}
+
+type bindConnectionConfig struct {
+	changeTenantTimeout time.Duration
+}
+
+type BindConnectionOption interface {
+	applyBindConnectionOption(cfg *bindConnectionConfig)
+}
+
 type optTracerProvider struct{ tp trace.TracerProvider }
 
 func (o *optTracerProvider) applyNewOption(cfg *newConfig) {
@@ -30,28 +54,24 @@ func WithTracerProvider(tp trace.TracerProvider) interface {
 	return &optTracerProvider{tp: tp}
 }
 
-type middlewareConfig struct {
-	tp                           trace.TracerProvider
-	reqIDGen                     RequestIDGenerator
-	decideTenant                 DecideTenantFn
-	handleNoTenantBoundError     ErrorHandler
-	handleObtainConnectionError  ErrorHandler
-	handleChangeTenantError      ErrorHandler
-	handleGenerateRequestIDError ErrorHandler
-	changeTenantTimeout          time.Duration
-}
-
-// MiddlewareOption applies a configuration option value to a middleware.
-type MiddlewareOption interface {
-	applyMiddlewareOption(cfg *middlewareConfig)
-}
-
 type optTimeout struct{ dur time.Duration }
 
-func (o *optTimeout) applyMiddlewareOption(cfg *middlewareConfig) { cfg.changeTenantTimeout = o.dur }
+func (o *optTimeout) applyMiddlewareOption(cfg *middlewareConfig) {
+	if cfg.bindConnectionCfg == nil {
+		cfg.bindConnectionCfg = new(bindConnectionConfig)
+	}
+	o.applyBindConnectionOption(cfg.bindConnectionCfg)
+}
 
-// WithTimeout configures the time a middleware waits the change of tenant.
-func WithTimeout(dur time.Duration) MiddlewareOption {
+func (o *optTimeout) applyBindConnectionOption(cfg *bindConnectionConfig) {
+	cfg.changeTenantTimeout = o.dur
+}
+
+// WithTimeout sets the how long wait for a tenant change.
+func WithTimeout(dur time.Duration) interface {
+	MiddlewareOption
+	BindConnectionOption
+} {
 	return &optTimeout{dur: dur}
 }
 
