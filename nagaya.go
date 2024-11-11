@@ -70,6 +70,7 @@ func (n *Nagaya[DB, Conn]) ObtainConnection(ctx context.Context) (conn Conn, err
 		err = ErrNoConnectionBound
 		return
 	}
+	span.SetAttributes(attrRequestID(reqID))
 	n.mux.RLock()
 	defer n.mux.RUnlock()
 	conn, ok = n.conns[reqID]
@@ -84,7 +85,7 @@ func (n *Nagaya[DB, Conn]) ObtainConnection(ctx context.Context) (conn Conn, err
 //
 // Usually the users should use [Middleware].
 func (n *Nagaya[DB, Conn]) BindConnection(ctx context.Context, tenant Tenant, opts ...BindConnectionOption) (c Conn, err error) {
-	ctx, span := n.tracer.Start(ctx, "Nagaya.BindConnection", trace.WithAttributes(KeyTenant.String(string(tenant))))
+	ctx, span := n.tracer.Start(ctx, "Nagaya.BindConnection", trace.WithAttributes(attrTenant(tenant)))
 	defer finishSpan(span, err)
 
 	var cfg bindConnectionConfig
@@ -99,6 +100,7 @@ func (n *Nagaya[DB, Conn]) BindConnection(ctx context.Context, tenant Tenant, op
 	if !ok {
 		return c, ErrNoConnectionBound
 	}
+	span.SetAttributes(attrRequestID(requestID))
 	conn, err := n.getConn(ctx, n.db)
 	if err != nil {
 		return c, &ObtainConnectionError{err: err}

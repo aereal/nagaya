@@ -66,7 +66,7 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 				finishSpan(span, genErr)
 				return
 			}
-			span.SetAttributes(KeyRequestID.String(reqID), KeyTenant.String(string(tenant)))
+			span.SetAttributes(attrRequestID(reqID), attrTenant(tenant))
 			ctx = ContextWithRequestID(WithTenant(ctx, tenant), reqID)
 			conn, err := n.BindConnection(ctx, tenant, WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout))
 			if err != nil {
