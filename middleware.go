@@ -100,7 +100,7 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 				delete(n.conns, reqID)
 			}()
 			finishSpan(span, nil)
-			next.ServeHTTP(w, r.WithContext(contextWithReqID(ctx, reqID)))
+			next.ServeHTTP(w, r.WithContext(ContextWithRequestID(ctx, reqID)))
 		})
 	}
 }
@@ -170,7 +170,7 @@ type DecideTenantFn func(*http.Request) TenantDecisionResult
 
 type reqIDCtxKey struct{}
 
-func contextWithReqID(ctx context.Context, id string) context.Context {
+func ContextWithRequestID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, reqIDCtxKey{}, id)
 }
 
