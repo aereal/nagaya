@@ -29,3 +29,7 @@ func finishSpan(span trace.Span, err error) {
 	}
 	span.End()
 }
+
+func attrRequestID(reqID string) attribute.KeyValue { return KeyRequestID.String(reqID) }
+
+func attrTenant(tenant Tenant) attribute.KeyValue { return KeyTenant.String(string(tenant)) }
