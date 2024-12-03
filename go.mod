@@ -2,7 +2,7 @@ module github.com/aereal/nagaya
 
 go 1.22
 
-toolchain go1.23.3
+toolchain go1.23.4
 
 require github.com/go-sql-driver/mysql v1.8.1
 
