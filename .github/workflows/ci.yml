@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: setup workspace
+        run: go work init ./ ./nagayatesting
       - name: lint
         uses: reviewdog/action-golangci-lint@v2
         with:
@@ -52,6 +54,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go_version }}
+          cache-dependency-path: '**/go.sum'
       - name: wait DB
         timeout-minutes: 2
         run: |
@@ -66,6 +69,8 @@ jobs:
           mysql -uroot -h 127.0.0.1 -P ${port} tenant_default < ./testdata/ddl.sql
         env:
           port: ${{ job.services.mysql.ports[3306] }}
+      - name: setup workspace
+        run: go work init ./ ./nagayatesting
       - name: test
         run: go test -race -coverprofile=cover.out -covermode=atomic ./...
       - uses: k1LoW/octocov-action@v1
