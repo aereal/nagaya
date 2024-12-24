@@ -8,11 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/aereal/nagaya"
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/aereal/nagaya/nagayatesting"
 )
 
 const tenantHeaderDefault = "default"
@@ -33,17 +32,10 @@ func obo(headerName string) nagaya.DecideTenantFn {
 
 func TestMiddleware(t *testing.T) {
 	t.Parallel()
-	dsn := os.Getenv("TEST_DB_DSN")
-	if dsn == "" {
-		t.Fatal("TEST_DB_DSN is required")
-	}
-	db, err := sql.Open("mysql", dsn)
+	ngy, err := nagayatesting.NewMySQLNagayaForTesting()
 	if err != nil {
-		t.Fatalf("sql.Open: %s", err)
+		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	ngy := nagaya.NewStd(db)
 
 	testCases := []struct {
 		name                    string
@@ -175,17 +167,10 @@ func TestMiddleware(t *testing.T) {
 }
 
 func TestMiddleware_not_configured(t *testing.T) {
-	dsn := os.Getenv("TEST_DB_DSN")
-	if dsn == "" {
-		t.Fatal("TEST_DB_DSN is required")
-	}
-	db, err := sql.Open("mysql", dsn)
+	ngy, err := nagayatesting.NewMySQLNagayaForTesting()
 	if err != nil {
-		t.Fatalf("sql.Open: %s", err)
+		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	ngy := nagaya.NewStd(db)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		_, err := ngy.ObtainConnection(ctx)
