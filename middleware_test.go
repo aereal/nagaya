@@ -2,7 +2,6 @@ package nagaya_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -128,7 +127,7 @@ func TestMiddleware(t *testing.T) {
 				}
 				_ = json.NewEncoder(w).Encode(result) //nolint:errcheck,errchkjson
 			})
-			srv := httptest.NewServer(nagaya.Middleware[*sql.DB, *sql.Conn](ngy, tc.options...)(handler))
+			srv := httptest.NewServer(nagaya.Middleware(ngy, tc.options...)(handler))
 			t.Cleanup(func() { srv.Close() })
 
 			ctx, cancel := context.WithCancel(context.Background())
