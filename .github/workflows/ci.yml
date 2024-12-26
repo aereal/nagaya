@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: setup workspace
-        run: go work init ./ ./nagayatesting
+        run: go work init ./ ./nagayatesting ./github.com/99designs/gqlgen/nagayagqlgen
       - name: lint
         uses: reviewdog/action-golangci-lint@v2
         with:
@@ -70,8 +70,8 @@ jobs:
         env:
           port: ${{ job.services.mysql.ports[3306] }}
       - name: setup workspace
-        run: go work init ./ ./nagayatesting
+        run: go work init ./ ./nagayatesting ./github.com/99designs/gqlgen/nagayagqlgen
       - name: test
-        run: go test -race -coverprofile=cover.out -covermode=atomic ./...
+        run: go test -race -coverprofile=cover.out -covermode=atomic ./ ./github.com/99designs/gqlgen/nagayagqlgen
       - uses: k1LoW/octocov-action@v1
         if: ${{ matrix.go_version == 'stable' }}
