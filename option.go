@@ -16,14 +16,11 @@ type NewOption interface {
 }
 
 type middlewareConfig struct {
-	tp                           trace.TracerProvider
-	reqIDGen                     RequestIDGenerator
-	decideTenant                 DecideTenantFn
-	handleNoTenantBoundError     ErrorHandler
-	handleObtainConnectionError  ErrorHandler
-	handleChangeTenantError      ErrorHandler
-	handleGenerateRequestIDError ErrorHandler
-	bindConnectionCfg            *bindConnectionConfig
+	tp                trace.TracerProvider
+	reqIDGen          RequestIDGenerator
+	decideTenant      DecideTenantFn
+	errorHandler      ErrorHandler
+	bindConnectionCfg *bindConnectionConfig
 }
 
 // MiddlewareOption applies a configuration option value to a middleware.
@@ -132,10 +129,7 @@ func WithRequestIDGenerator(gen RequestIDGenerator) MiddlewareOption {
 type optErrorHandler struct{ handler ErrorHandler }
 
 func (o *optErrorHandler) applyMiddlewareOption(cfg *middlewareConfig) {
-	cfg.handleChangeTenantError = o.handler
-	cfg.handleGenerateRequestIDError = o.handler
-	cfg.handleNoTenantBoundError = o.handler
-	cfg.handleObtainConnectionError = o.handler
+	cfg.errorHandler = o.handler
 }
 
 // WithErrorHandler tells the middleware to use given error handler for all errors.
@@ -145,40 +139,36 @@ func WithErrorHandler(handler ErrorHandler) MiddlewareOption {
 
 type optChangeTenantErrorHandler struct{ handler ErrorHandler }
 
-func (o *optChangeTenantErrorHandler) applyMiddlewareOption(cfg *middlewareConfig) {
-	cfg.handleChangeTenantError = o.handler
-}
-
+// WithChangeTenantErrorHandler is deprecated.
+//
+// Deprecated: use WithErrorHandler
 func WithChangeTenantErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return &optChangeTenantErrorHandler{handler: handler}
+	return WithErrorHandler(handler)
 }
 
 type optGenerateRequestIDErrorHandler struct{ handler ErrorHandler }
 
-func (o *optGenerateRequestIDErrorHandler) applyMiddlewareOption(cfg *middlewareConfig) {
-	cfg.handleGenerateRequestIDError = o.handler
-}
-
+// WithGenerateRequestIDErrorHandler is deprecated.
+//
+// Deprecated: use WithErrorHandler
 func WithGenerateRequestIDErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return &optGenerateRequestIDErrorHandler{handler: handler}
+	return WithErrorHandler(handler)
 }
 
 type optNoTenantBoundErrorHandler struct{ handler ErrorHandler }
 
-func (o *optNoTenantBoundErrorHandler) applyMiddlewareOption(cfg *middlewareConfig) {
-	cfg.handleNoTenantBoundError = o.handler
-}
-
+// WithNoTenantBoundErrorHandler is deprecated.
+//
+// Deprecated: use WithErrorHandler
 func WithNoTenantBoundErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return &optNoTenantBoundErrorHandler{handler: handler}
+	return WithErrorHandler(handler)
 }
 
 type optObtainConnectionErrorHandler struct{ handler ErrorHandler }
 
-func (o *optObtainConnectionErrorHandler) applyMiddlewareOption(cfg *middlewareConfig) {
-	cfg.handleObtainConnectionError = o.handler
-}
-
+// WithObtainConnectionErrorHandler is deprecated.
+//
+// Deprecated: use WithErrorHandler
 func WithObtainConnectionErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return &optObtainConnectionErrorHandler{handler: handler}
+	return WithErrorHandler(handler)
 }
