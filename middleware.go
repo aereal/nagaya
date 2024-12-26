@@ -31,17 +31,8 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 	if cfg.reqIDGen == nil {
 		cfg.reqIDGen = defaultIDGenerator
 	}
-	if cfg.handleChangeTenantError == nil {
-		cfg.handleChangeTenantError = jsonErrorHandler
-	}
-	if cfg.handleNoTenantBoundError == nil {
-		cfg.handleNoTenantBoundError = jsonErrorHandler
-	}
-	if cfg.handleObtainConnectionError == nil {
-		cfg.handleObtainConnectionError = jsonErrorHandler
-	}
-	if cfg.handleGenerateRequestIDError == nil {
-		cfg.handleGenerateRequestIDError = jsonErrorHandler
+	if cfg.errorHandler == nil {
+		cfg.errorHandler = jsonErrorHandler
 	}
 	tracer := getTracer(cfg.tp)
 	return func(next http.Handler) http.Handler {
@@ -55,14 +46,14 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 				return
 			}
 			if err != nil {
-				cfg.handleNoTenantBoundError(w, r, err)
+				cfg.errorHandler(w, r, err)
 				finishSpan(span, err)
 				return
 			}
 			reqID, err := cfg.reqIDGen.GenerateID(ctx, r)
 			if err != nil {
 				genErr := &GenerateRequestIDError{err: err}
-				cfg.handleGenerateRequestIDError(w, r, genErr)
+				cfg.errorHandler(w, r, genErr)
 				finishSpan(span, genErr)
 				return
 			}
@@ -70,7 +61,7 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 			ctx = ContextWithRequestID(WithTenant(ctx, tenant), reqID)
 			conn, err := n.BindConnection(ctx, tenant, WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout))
 			if err != nil {
-				cfg.handleObtainConnectionError(w, r, err)
+				cfg.errorHandler(w, r, err)
 				finishSpan(span, err)
 				return
 			}
