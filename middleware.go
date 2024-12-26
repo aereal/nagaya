@@ -158,6 +158,7 @@ func reqIDFromContext(ctx context.Context) (string, bool) {
 	return id, ok
 }
 
+// ErrorHandler is a function that called if the error occurred.
 type ErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
 
 func jsonErrorHandler(w http.ResponseWriter, r *http.Request, err error) {

@@ -42,7 +42,7 @@ func New[DB DBish, Conn Connish](db DB, getConn GetConnFn[DB, Conn], opts ...New
 }
 
 func NewStd(db *sql.DB, opts ...NewOption) *Nagaya[*sql.DB, *sql.Conn] {
-	return New[*sql.DB, *sql.Conn](db, getConnStd, opts...)
+	return New(db, getConnStd, opts...)
 }
 
 func getConnStd(ctx context.Context, db *sql.DB) (*sql.Conn, error) {
