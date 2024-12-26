@@ -47,6 +47,7 @@ func (o *optTracerProvider) applyNewOption(cfg *newConfig) {
 
 func (o *optTracerProvider) applyMiddlewareOption(cfg *middlewareConfig) { cfg.tp = o.tp }
 
+// WithTracerProvider creates an Option tells that use given TracerProvider.
 func WithTracerProvider(tp trace.TracerProvider) interface {
 	NewOption
 	MiddlewareOption
@@ -123,6 +124,7 @@ type optRequestIDGenerator struct{ gen RequestIDGenerator }
 
 func (o *optRequestIDGenerator) applyMiddlewareOption(cfg *middlewareConfig) { cfg.reqIDGen = o.gen }
 
+// WithRequestIDGenerator tells the middleware to use given [RequestIDGenerator].
 func WithRequestIDGenerator(gen RequestIDGenerator) MiddlewareOption {
 	return &optRequestIDGenerator{gen: gen}
 }
@@ -136,6 +138,7 @@ func (o *optErrorHandler) applyMiddlewareOption(cfg *middlewareConfig) {
 	cfg.handleObtainConnectionError = o.handler
 }
 
+// WithErrorHandler tells the middleware to use given error handler for all errors.
 func WithErrorHandler(handler ErrorHandler) MiddlewareOption {
 	return &optErrorHandler{handler: handler}
 }
