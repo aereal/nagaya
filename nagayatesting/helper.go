@@ -15,6 +15,14 @@ const envTestDBDSN = "TEST_DB_DSN"
 var ErrDSNRequired = errors.New(fmt.Sprintf("%s is required", envTestDBDSN))
 
 func NewMySQLNagayaForTesting() (*nagaya.Nagaya[*sql.DB, *sql.Conn], error) {
+	db, err := NewDBForTesting()
+	if err != nil {
+		return nil, err
+	}
+	return nagaya.NewStd(db), nil
+}
+
+func NewDBForTesting() (*sql.DB, error) {
 	dsn := os.Getenv(envTestDBDSN)
 	if dsn == "" {
 		return nil, ErrDSNRequired
@@ -23,5 +31,5 @@ func NewMySQLNagayaForTesting() (*nagaya.Nagaya[*sql.DB, *sql.Conn], error) {
 	if err != nil {
 		return nil, err
 	}
-	return nagaya.NewStd(db), nil
+	return db, nil
 }
