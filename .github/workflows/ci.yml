@@ -1,33 +1,61 @@
 ---
-
 name: CI
 on:
   pull_request:
-  push:
-    branches:
-      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+env:
+  AQUA_CONFIG: ${{ github.workspace }}/aqua.yaml
+  AQUA_POLICY_CONFIG: ${{ github.workspace }}/aqua-policy.yaml
 jobs:
   ok:
     if: failure()
-    runs-on: ubuntu-latest
+    permissions: {}
+    runs-on: ubuntu-24.04
     needs:
       - lint
       - test
     steps:
       - run: exit 1
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: '**/go.sum'
       - name: setup workspace
         run: go work init ./ ./nagayatesting
-      - name: lint
-        uses: reviewdog/action-golangci-lint@64c149605d92715a545b1d80908eff8cecec21b1 # v2.7.1
+      - uses: aquaproj/aqua-installer@11dd79b4e498d471a9385aa9fb7f62bb5f52a73c # v4.0.4
         with:
-          golangci_lint_flags: '--config=.golangci.yml ./...'
-          reporter: github-pr-review
-          filter_mode: nofilter
-          fail_on_error: true
+          aqua_version: v2.56.2
+      - run: aqua install
+      - name: golangci-lint
+        env:
+          _go_version: ${{ steps.setup-go.outputs.go-version }}
+        run: |
+          golangci-lint run \
+            --output.text.path stdout \
+            --output.text.print-issued-lines \
+            --issues-exit-code 0 \
+            --config .golangci.yml \
+            1>lint-stdout.txt 2>/dev/stderr
+      - name: reviewdog
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ github.token }}
+        run: |
+          reviewdog \
+            -name golangci-lint \
+            -f golangci-lint \
+            -filter-mode nofilter \
+            -reporter github-pr-check \
+            -fail-level error \
+            < lint-stdout.txt
   test:
     permissions:
       actions: read
@@ -35,7 +63,7 @@ jobs:
       pull-requests: write
     services:
       mysql:
-        image: 'mysql:8.2.0'
+        image: 'mysql:8.4.7'
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: yes
           MYSQL_DATABASE: tenant_default
@@ -46,13 +74,13 @@ jobs:
         go_version:
           - stable
           - oldstable
-        os:
-          - ubuntu-latest
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        id: setup-go
         with:
+          cache: true
           go-version: ${{ matrix.go_version }}
           cache-dependency-path: '**/go.sum'
       - name: wait DB
@@ -71,7 +99,10 @@ jobs:
           port: ${{ job.services.mysql.ports[3306] }}
       - name: setup workspace
         run: go work init ./ ./nagayatesting
+      - run: go mod download
       - name: test
-        run: go test -race -coverprofile=cover.out -covermode=atomic ./...
-      - uses: k1LoW/octocov-action@1ad702b3118b6a055c00b01db68ca0d9f6641dbc # v1.4.0
+        run: go test -race -coverpkg=./... -coverprofile=./coverage.out -timeout=30s ./...
+      - uses: k1LoW/octocov-action@73d561f65d59e66899ed5c87e4621a913b5d5c20 # v1.5.0
         if: ${{ matrix.go_version == 'stable' }}
+        with:
+          version: v0.73.0
