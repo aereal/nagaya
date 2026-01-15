@@ -2,7 +2,7 @@ module github.com/aereal/nagaya
 
 go 1.23.4
 
-toolchain go1.23.6
+toolchain go1.25.5
 
 require (
 	github.com/aereal/nagaya/nagayatesting v0.0.0-20241226135531-40abc1795790
