@@ -36,6 +36,16 @@ type BindConnectionOption interface {
 	applyBindConnectionOption(cfg *bindConnectionConfig)
 }
 
+type doConfig struct {
+	reqIDGen           RequestIDGenerator
+	tenantDecisionRet  TenantDecisionResult
+	bindConnectionOpts []BindConnectionOption
+}
+
+type DoOption interface {
+	applyDoOption(c *doConfig)
+}
+
 type optTracerProvider struct{ tp trace.TracerProvider }
 
 func (o *optTracerProvider) applyNewOption(cfg *newConfig) {
@@ -65,10 +75,15 @@ func (o *optTimeout) applyBindConnectionOption(cfg *bindConnectionConfig) {
 	cfg.changeTenantTimeout = o.dur
 }
 
+func (o *optTimeout) applyDoOption(c *doConfig) {
+	c.bindConnectionOpts = append(c.bindConnectionOpts, o)
+}
+
 // WithTimeout sets the how long wait for a tenant change.
 func WithTimeout(dur time.Duration) interface {
 	MiddlewareOption
 	BindConnectionOption
+	DoOption
 } {
 	return &optTimeout{dur: dur}
 }
@@ -103,8 +118,13 @@ type optRequestIDGenerator struct{ gen RequestIDGenerator }
 
 func (o *optRequestIDGenerator) applyMiddlewareOption(cfg *middlewareConfig) { cfg.reqIDGen = o.gen }
 
+func (o *optRequestIDGenerator) applyDoOption(c *doConfig) { c.reqIDGen = o.gen }
+
 // WithRequestIDGenerator tells the middleware to use given [RequestIDGenerator].
-func WithRequestIDGenerator(gen RequestIDGenerator) MiddlewareOption {
+func WithRequestIDGenerator(gen RequestIDGenerator) interface {
+	MiddlewareOption
+	DoOption
+} {
 	return &optRequestIDGenerator{gen: gen}
 }
 
@@ -117,4 +137,12 @@ func (o *optErrorHandler) applyMiddlewareOption(cfg *middlewareConfig) {
 // WithErrorHandler tells the middleware to use given error handler for all errors.
 func WithErrorHandler(handler ErrorHandler) MiddlewareOption {
 	return &optErrorHandler{handler: handler}
+}
+
+func WithTenantDecisionResult(r TenantDecisionResult) DoOption { return &optTenantDecisionResult{r} }
+
+type optTenantDecisionResult struct{ TenantDecisionResult }
+
+func (o *optTenantDecisionResult) applyDoOption(c *doConfig) {
+	c.tenantDecisionRet = o.TenantDecisionResult
 }
