@@ -136,7 +136,12 @@ func (TenantDecisionResultChangeTenant) Decision() TenantDecision { return Tenan
 
 func (r *TenantDecisionResultChangeTenant) DecideTenant() (Tenant, error) { return r.Tenant, nil }
 
-type DecideTenantFn func(*http.Request) TenantDecisionResult
+type DecideRequestTenantFunc func(*http.Request) TenantDecisionResult
+
+// DecideTenantFn is deprecated.
+//
+// Deprecated: use [DecideRequestTenantFunc].
+type DecideTenantFn = DecideRequestTenantFunc
 
 type reqIDCtxKey struct{}
 

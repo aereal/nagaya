@@ -18,7 +18,7 @@ type NewOption interface {
 type middlewareConfig struct {
 	tp                trace.TracerProvider
 	reqIDGen          RequestIDGenerator
-	decideTenant      DecideTenantFn
+	decideTenant      DecideRequestTenantFunc
 	errorHandler      ErrorHandler
 	bindConnectionCfg *bindConnectionConfig
 }
@@ -74,7 +74,7 @@ func WithTimeout(dur time.Duration) interface {
 }
 
 type optDecideTenantFn struct {
-	fn DecideTenantFn
+	fn DecideRequestTenantFunc
 }
 
 func (o *optDecideTenantFn) applyMiddlewareOption(cfg *middlewareConfig) {
@@ -82,7 +82,9 @@ func (o *optDecideTenantFn) applyMiddlewareOption(cfg *middlewareConfig) {
 }
 
 // WithDecideTenantFn tells the middleware to use given function to decide the tenant.
-func WithDecideTenantFn(fn DecideTenantFn) MiddlewareOption { return &optDecideTenantFn{fn: fn} }
+func WithDecideTenantFn(fn DecideRequestTenantFunc) MiddlewareOption {
+	return &optDecideTenantFn{fn: fn}
+}
 
 // DecideTenantFromHeader tells the middleware to use given header value to decide the tenant.
 func DecideTenantFromHeader(headerName string) MiddlewareOption {

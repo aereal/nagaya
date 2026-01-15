@@ -17,7 +17,7 @@ import (
 
 const tenantHeaderDefault = "default"
 
-func obo(headerName string) nagaya.DecideTenantFn {
+func obo(headerName string) nagaya.DecideRequestTenantFunc {
 	return func(r *http.Request) nagaya.TenantDecisionResult {
 		tenant := r.Header.Get(headerName)
 		switch tenant {
