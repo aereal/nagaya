@@ -137,16 +137,12 @@ func WithErrorHandler(handler ErrorHandler) MiddlewareOption {
 	return &optErrorHandler{handler: handler}
 }
 
-type optChangeTenantErrorHandler struct{ handler ErrorHandler }
-
 // WithChangeTenantErrorHandler is deprecated.
 //
 // Deprecated: use WithErrorHandler
 func WithChangeTenantErrorHandler(handler ErrorHandler) MiddlewareOption {
 	return WithErrorHandler(handler)
 }
-
-type optGenerateRequestIDErrorHandler struct{ handler ErrorHandler }
 
 // WithGenerateRequestIDErrorHandler is deprecated.
 //
@@ -155,16 +151,12 @@ func WithGenerateRequestIDErrorHandler(handler ErrorHandler) MiddlewareOption {
 	return WithErrorHandler(handler)
 }
 
-type optNoTenantBoundErrorHandler struct{ handler ErrorHandler }
-
 // WithNoTenantBoundErrorHandler is deprecated.
 //
 // Deprecated: use WithErrorHandler
 func WithNoTenantBoundErrorHandler(handler ErrorHandler) MiddlewareOption {
 	return WithErrorHandler(handler)
 }
-
-type optObtainConnectionErrorHandler struct{ handler ErrorHandler }
 
 // WithObtainConnectionErrorHandler is deprecated.
 //
