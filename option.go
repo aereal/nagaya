@@ -139,6 +139,8 @@ func WithErrorHandler(handler ErrorHandler) MiddlewareOption {
 	return &optErrorHandler{handler: handler}
 }
 
+func WithTenantDecisionResult(r TenantDecisionResult) DoOption { return &optTenantDecisionResult{r} }
+
 type optTenantDecisionResult struct{ TenantDecisionResult }
 
 func (o *optTenantDecisionResult) applyDoOption(c *doConfig) {

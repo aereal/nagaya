@@ -5,6 +5,25 @@ import (
 	"errors"
 )
 
+// Do runs a handler with the database connection that bound for the determined tenant.
+func Do[DB DBish, Conn Connish](ctx context.Context, n *Nagaya[DB, Conn], handler func(context.Context) error, opts ...DoOption) error {
+	return newDoer(n, handler, opts...).do(ctx)
+}
+
+// Yield returns a value from a yielder function.
+func Yield[V any, DB DBish, Conn Connish](ctx context.Context, n *Nagaya[DB, Conn], yielder func(context.Context) (V, error), opts ...DoOption) (V, error) {
+	var ret V
+	handler := func(ctx context.Context) error {
+		var err error
+		ret, err = yielder(ctx)
+		return err
+	}
+	if err := newDoer(n, handler, opts...).do(ctx); err != nil {
+		return ret, err
+	}
+	return ret, nil
+}
+
 func newDoer[DB DBish, Conn Connish](n *Nagaya[DB, Conn], handler func(context.Context) error, opts ...DoOption) *doer[DB, Conn] {
 	var cfg doConfig
 	for _, o := range opts {
