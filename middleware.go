@@ -50,7 +50,7 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 				finishSpan(span, err)
 				return
 			}
-			reqID, err := cfg.reqIDGen.GenerateID(ctx, r)
+			reqID, err := cfg.reqIDGen.GenerateID()
 			if err != nil {
 				genErr := &GenerateRequestIDError{err: err}
 				cfg.errorHandler(w, r, genErr)
@@ -76,16 +76,18 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 }
 
 type RequestIDGenerator interface {
-	GenerateID(ctx context.Context, r *http.Request) (string, error)
+	GenerateID() (string, error)
 }
 
-type RequestIDGeneratorFunc func(ctx context.Context, r *http.Request) (string, error)
+type RequestIDGeneratorFunc func() (string, error)
 
-func (f RequestIDGeneratorFunc) GenerateID(ctx context.Context, r *http.Request) (string, error) {
-	return f(ctx, r)
+var _ RequestIDGenerator = (RequestIDGeneratorFunc)(nil)
+
+func (f RequestIDGeneratorFunc) GenerateID() (string, error) {
+	return f()
 }
 
-var defaultIDGenerator = RequestIDGeneratorFunc(func(_ context.Context, _ *http.Request) (string, error) { return xid.New().String(), nil })
+var defaultIDGenerator = RequestIDGeneratorFunc(func() (string, error) { return xid.New().String(), nil })
 
 // TenantDecision indicates whether a tenant is changed, cannot be changed due to some error, or unchanged.
 type TenantDecision int
