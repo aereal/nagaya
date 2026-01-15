@@ -1,6 +1,7 @@
 package nagaya_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -152,6 +153,7 @@ func TestMiddleware(t *testing.T) {
 			defer resp.Body.Close()
 			if resp.StatusCode != tc.wantStatus {
 				body, _ := io.ReadAll(resp.Body) //nolint:errcheck
+				resp.Body = io.NopCloser(bytes.NewReader(body))
 				t.Errorf("failed to request: status=%d body=%s", resp.StatusCode, string(body))
 			}
 			var body struct {
