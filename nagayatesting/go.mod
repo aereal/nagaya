@@ -1,6 +1,6 @@
 module github.com/aereal/nagaya/nagayatesting
 
-go 1.23.4
+go 1.25.5
 
 require (
 	github.com/aereal/nagaya v0.5.0
