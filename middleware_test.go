@@ -2,15 +2,17 @@ package nagaya_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/aereal/nagaya"
-	"github.com/aereal/nagaya/nagayatesting"
+	_ "github.com/go-sql-driver/mysql"
 )
 
 const tenantHeaderDefault = "default"
@@ -31,7 +33,7 @@ func obo(headerName string) nagaya.DecideTenantFn {
 
 func TestMiddleware(t *testing.T) {
 	t.Parallel()
-	ngy, err := nagayatesting.NewMySQLNagayaForTesting()
+	ngy, err := newMySQLNagayaForTesting()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +168,7 @@ func TestMiddleware(t *testing.T) {
 }
 
 func TestMiddleware_not_configured(t *testing.T) {
-	ngy, err := nagayatesting.NewMySQLNagayaForTesting()
+	ngy, err := newMySQLNagayaForTesting()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,4 +200,20 @@ func TestMiddleware_not_configured(t *testing.T) {
 		t.Fatalf("http.Client.Do: %s", err)
 	}
 	defer resp.Body.Close()
+}
+
+const envTestDBDSN = "TEST_DB_DSN"
+
+var errDSNRequired = fmt.Errorf("%s is required", envTestDBDSN)
+
+func newMySQLNagayaForTesting() (*nagaya.Nagaya[*sql.DB, *sql.Conn], error) {
+	dsn := os.Getenv(envTestDBDSN)
+	if dsn == "" {
+		return nil, errDSNRequired
+	}
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	return nagaya.NewStd(db), nil
 }
