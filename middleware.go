@@ -38,54 +38,43 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, span := tracer.Start(r.Context(), "Nagaya.Middleware", trace.WithSpanKind(trace.SpanKindServer))
-			decisionResult := cfg.decideTenant(r)
-			tenant, err := decisionResult.DecideTenant()
-			if errors.Is(err, ErrNoTenantChange) {
-				finishSpan(span, nil)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
+			d := &doer[DB, Conn]{
+				n:              n,
+				idGenerator:    cfg.reqIDGen,
+				decisionResult: cfg.decideTenant(r),
+				bindConnectionOption: []BindConnectionOption{
+					WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout),
+				},
+				handler: func(ctx context.Context) error {
+					finishSpan(span, nil)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return nil
+				},
 			}
-			if err != nil {
+			if timeout := cfg.bindConnectionCfg.changeTenantTimeout; timeout != 0 {
+				d.bindConnectionOption = append(d.bindConnectionOption, WithTimeout(timeout))
+			}
+			if err := d.do(ctx); err != nil {
 				cfg.errorHandler(w, r, err)
 				finishSpan(span, err)
-				return
 			}
-			reqID, err := cfg.reqIDGen.GenerateID(ctx, r)
-			if err != nil {
-				genErr := &GenerateRequestIDError{err: err}
-				cfg.errorHandler(w, r, genErr)
-				finishSpan(span, genErr)
-				return
-			}
-			span.SetAttributes(attrRequestID(reqID), attrTenant(tenant))
-			ctx = ContextWithRequestID(WithTenant(ctx, tenant), reqID)
-			conn, err := n.BindConnection(ctx, tenant, WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout))
-			if err != nil {
-				cfg.errorHandler(w, r, err)
-				finishSpan(span, err)
-				return
-			}
-			defer func() {
-				_ = conn.Close()
-			}()
-			defer n.ReleaseConnection(reqID)
-			finishSpan(span, nil)
-			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
 type RequestIDGenerator interface {
-	GenerateID(ctx context.Context, r *http.Request) (string, error)
+	GenerateID() (string, error)
 }
 
-type RequestIDGeneratorFunc func(ctx context.Context, r *http.Request) (string, error)
+type RequestIDGeneratorFunc func() (string, error)
 
-func (f RequestIDGeneratorFunc) GenerateID(ctx context.Context, r *http.Request) (string, error) {
-	return f(ctx, r)
+var _ RequestIDGenerator = (RequestIDGeneratorFunc)(nil)
+
+func (f RequestIDGeneratorFunc) GenerateID() (string, error) {
+	return f()
 }
 
-var defaultIDGenerator = RequestIDGeneratorFunc(func(_ context.Context, _ *http.Request) (string, error) { return xid.New().String(), nil })
+var defaultIDGenerator = RequestIDGeneratorFunc(func() (string, error) { return xid.New().String(), nil })
 
 // TenantDecision indicates whether a tenant is changed, cannot be changed due to some error, or unchanged.
 type TenantDecision int
@@ -136,7 +125,12 @@ func (TenantDecisionResultChangeTenant) Decision() TenantDecision { return Tenan
 
 func (r *TenantDecisionResultChangeTenant) DecideTenant() (Tenant, error) { return r.Tenant, nil }
 
-type DecideTenantFn func(*http.Request) TenantDecisionResult
+type DecideRequestTenantFunc func(*http.Request) TenantDecisionResult
+
+// DecideTenantFn is deprecated.
+//
+// Deprecated: use [DecideRequestTenantFunc].
+type DecideTenantFn = DecideRequestTenantFunc
 
 type reqIDCtxKey struct{}
 

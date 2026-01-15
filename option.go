@@ -18,7 +18,7 @@ type NewOption interface {
 type middlewareConfig struct {
 	tp                trace.TracerProvider
 	reqIDGen          RequestIDGenerator
-	decideTenant      DecideTenantFn
+	decideTenant      DecideRequestTenantFunc
 	errorHandler      ErrorHandler
 	bindConnectionCfg *bindConnectionConfig
 }
@@ -73,28 +73,8 @@ func WithTimeout(dur time.Duration) interface {
 	return &optTimeout{dur: dur}
 }
 
-// GetTenantFromHeader tells the middleware get the tenant from the request header.
-//
-// Deprecated: use DecideTenantFromHeader
-func GetTenantFromHeader(headerName string) MiddlewareOption {
-	return DecideTenantFromHeader(headerName)
-}
-
-// WithGetTenantFn tells the middleware get the tenant using given function.
-//
-// Deprecated: use WithDecideTenantFn
-func WithGetTenantFn(fn func(r *http.Request) (Tenant, bool)) MiddlewareOption {
-	return WithDecideTenantFn(func(r *http.Request) TenantDecisionResult {
-		tenant, ok := fn(r)
-		if !ok {
-			return &TenantDecisionResultError{Err: ErrNoTenantBound}
-		}
-		return &TenantDecisionResultChangeTenant{Tenant: tenant}
-	})
-}
-
 type optDecideTenantFn struct {
-	fn DecideTenantFn
+	fn DecideRequestTenantFunc
 }
 
 func (o *optDecideTenantFn) applyMiddlewareOption(cfg *middlewareConfig) {
@@ -102,7 +82,9 @@ func (o *optDecideTenantFn) applyMiddlewareOption(cfg *middlewareConfig) {
 }
 
 // WithDecideTenantFn tells the middleware to use given function to decide the tenant.
-func WithDecideTenantFn(fn DecideTenantFn) MiddlewareOption { return &optDecideTenantFn{fn: fn} }
+func WithDecideTenantFn(fn DecideRequestTenantFunc) MiddlewareOption {
+	return &optDecideTenantFn{fn: fn}
+}
 
 // DecideTenantFromHeader tells the middleware to use given header value to decide the tenant.
 func DecideTenantFromHeader(headerName string) MiddlewareOption {
@@ -135,32 +117,4 @@ func (o *optErrorHandler) applyMiddlewareOption(cfg *middlewareConfig) {
 // WithErrorHandler tells the middleware to use given error handler for all errors.
 func WithErrorHandler(handler ErrorHandler) MiddlewareOption {
 	return &optErrorHandler{handler: handler}
-}
-
-// WithChangeTenantErrorHandler is deprecated.
-//
-// Deprecated: use WithErrorHandler
-func WithChangeTenantErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return WithErrorHandler(handler)
-}
-
-// WithGenerateRequestIDErrorHandler is deprecated.
-//
-// Deprecated: use WithErrorHandler
-func WithGenerateRequestIDErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return WithErrorHandler(handler)
-}
-
-// WithNoTenantBoundErrorHandler is deprecated.
-//
-// Deprecated: use WithErrorHandler
-func WithNoTenantBoundErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return WithErrorHandler(handler)
-}
-
-// WithObtainConnectionErrorHandler is deprecated.
-//
-// Deprecated: use WithErrorHandler
-func WithObtainConnectionErrorHandler(handler ErrorHandler) MiddlewareOption {
-	return WithErrorHandler(handler)
 }
