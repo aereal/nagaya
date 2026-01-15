@@ -5,6 +5,26 @@ import (
 	"errors"
 )
 
+func newDoer[DB DBish, Conn Connish](n *Nagaya[DB, Conn], handler func(context.Context) error, opts ...DoOption) *doer[DB, Conn] {
+	var cfg doConfig
+	for _, o := range opts {
+		o.applyDoOption(&cfg)
+	}
+	if cfg.reqIDGen == nil {
+		cfg.reqIDGen = defaultIDGenerator
+	}
+	if cfg.tenantDecisionRet == nil {
+		cfg.tenantDecisionRet = failedToDetermineTenantResult
+	}
+	return &doer[DB, Conn]{
+		n:                    n,
+		decisionResult:       cfg.tenantDecisionRet,
+		handler:              handler,
+		idGenerator:          cfg.reqIDGen,
+		bindConnectionOption: cfg.bindConnectionOpts,
+	}
+}
+
 type doer[DB DBish, Conn Connish] struct {
 	n                    *Nagaya[DB, Conn]
 	decisionResult       TenantDecisionResult

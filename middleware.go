@@ -13,8 +13,10 @@ import (
 
 var defaultChangeTenantTimeout = time.Second * 5
 
+var failedToDetermineTenantResult = &TenantDecisionResultError{Err: ErrNoTenantBound}
+
 func failsToDetermineTenant(_ *http.Request) TenantDecisionResult {
-	return &TenantDecisionResultError{Err: ErrNoTenantBound}
+	return failedToDetermineTenantResult
 }
 
 // Middleware returns a middleware function that determines target tenant and obtain the database connection against the tenant.
@@ -38,19 +40,12 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, span := tracer.Start(r.Context(), "Nagaya.Middleware", trace.WithSpanKind(trace.SpanKindServer))
-			d := &doer[DB, Conn]{
-				n:              n,
-				idGenerator:    cfg.reqIDGen,
-				decisionResult: cfg.decideTenant(r),
-				bindConnectionOption: []BindConnectionOption{
-					WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout),
-				},
-				handler: func(ctx context.Context) error {
-					finishSpan(span, nil)
-					next.ServeHTTP(w, r.WithContext(ctx))
-					return nil
-				},
+			handler := func(ctx context.Context) error {
+				finishSpan(span, nil)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return nil
 			}
+			d := newDoer(n, handler, &optTenantDecisionResult{cfg.decideTenant(r)}, WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout))
 			if timeout := cfg.bindConnectionCfg.changeTenantTimeout; timeout != 0 {
 				d.bindConnectionOption = append(d.bindConnectionOption, WithTimeout(timeout))
 			}
