@@ -38,39 +38,26 @@ func Middleware[DB DBish, Conn Connish](n *Nagaya[DB, Conn], opts ...MiddlewareO
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, span := tracer.Start(r.Context(), "Nagaya.Middleware", trace.WithSpanKind(trace.SpanKindServer))
-			decisionResult := cfg.decideTenant(r)
-			tenant, err := decisionResult.DecideTenant()
-			if errors.Is(err, ErrNoTenantChange) {
-				finishSpan(span, nil)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
+			d := &doer[DB, Conn]{
+				n:              n,
+				idGenerator:    cfg.reqIDGen,
+				decisionResult: cfg.decideTenant(r),
+				bindConnectionOption: []BindConnectionOption{
+					WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout),
+				},
+				handler: func(ctx context.Context) error {
+					finishSpan(span, nil)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return nil
+				},
 			}
-			if err != nil {
+			if timeout := cfg.bindConnectionCfg.changeTenantTimeout; timeout != 0 {
+				d.bindConnectionOption = append(d.bindConnectionOption, WithTimeout(timeout))
+			}
+			if err := d.do(ctx); err != nil {
 				cfg.errorHandler(w, r, err)
 				finishSpan(span, err)
-				return
 			}
-			reqID, err := cfg.reqIDGen.GenerateID()
-			if err != nil {
-				genErr := &GenerateRequestIDError{err: err}
-				cfg.errorHandler(w, r, genErr)
-				finishSpan(span, genErr)
-				return
-			}
-			span.SetAttributes(attrRequestID(reqID), attrTenant(tenant))
-			ctx = ContextWithRequestID(WithTenant(ctx, tenant), reqID)
-			conn, err := n.BindConnection(ctx, tenant, WithTimeout(cfg.bindConnectionCfg.changeTenantTimeout))
-			if err != nil {
-				cfg.errorHandler(w, r, err)
-				finishSpan(span, err)
-				return
-			}
-			defer func() {
-				_ = conn.Close()
-			}()
-			defer n.ReleaseConnection(reqID)
-			finishSpan(span, nil)
-			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
