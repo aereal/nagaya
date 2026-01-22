@@ -2,7 +2,7 @@
 
 services:
   mysql:
-    image: 'mysql:8.2.0'
+    image: 'mysql:9.6.0'
     ports:
       - '3306'
     environment:

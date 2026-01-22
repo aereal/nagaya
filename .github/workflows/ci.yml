@@ -61,7 +61,7 @@ jobs:
       pull-requests: write
     services:
       mysql:
-        image: 'mysql:8.4.7'
+        image: 'mysql:9.6.0'
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: yes
           MYSQL_DATABASE: tenant_default
